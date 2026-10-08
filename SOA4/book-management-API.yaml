@@ -39,6 +39,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#components/responses/IncorrectFieldType'
     delete:
       summary: Xóa sách
       operationId: deleteBook
@@ -83,6 +85,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ForbiddenError'
+    'IncorrectFieldType':
+      description: Người dùng nhập sai kiểu của 1 trường
+      content: 
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IncorrectFieldTypeError'
   schemas:
     Book:
       type: object
@@ -160,3 +168,15 @@ components:
         message:
           type: string
           example: "forbidden user"
+    IncorrectFieldTypeError:
+      type: object
+      required:
+        -statusCode
+        -message
+      properties:
+        statusCode:
+          type: integer
+          enum: [400]
+        message:
+          type: string
+          example: "Trường author sai kiểu dữ liệu"
