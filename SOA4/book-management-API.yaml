@@ -1,0 +1,162 @@
+openapi: 3.0.4
+info:
+  title: Book Management API
+  description: Quản lý hệ thống sách
+  version: 1.0.0
+
+servers:
+  - url: https://system.book.com/v1
+    description: Main Server 
+
+security:
+  - bearerAuth: []
+
+paths:
+  /books/{bookId}:
+    parameters:
+      - in: path
+        name: bookId
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: ID duy nhất của sách
+    patch:
+      summary: Cập nhật một phần thông tin sách
+      operationId: patchBook
+      requestBody:
+        required: true
+        content: 
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookInput'
+      responses:
+        '200':
+          $ref: '#/components/responses/PatchSuccess'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      summary: Xóa sách
+      operationId: deleteBook
+      responses:
+        '204': 
+          description: Xóa sách thành công
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http 
+      scheme: bearer 
+      bearerFormat: JWT
+  responses:
+    'PatchSuccess':
+        description: Sửa thông tin sách thành công
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+    'NotFound':
+      description: Không tìm thấy sách
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFoundError'
+    'Unauthorized':
+      description: Chưa xác thực quyền
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnauthorizedError' 
+    'Forbidden':
+      description: Người dùng không có quyền
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForbiddenError'
+  schemas:
+    Book:
+      type: object
+      required:
+        - id 
+        - title 
+        - author 
+        - price 
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        title: 
+          type: string
+          example: "Clean Code"
+        author:
+          type: string
+          example: "Robert C. Martin"
+        price:
+          type: integer
+          format: int64 
+          minimum: 0
+          example: 100000
+    UpdateBookInput:
+      type: object
+      properties:
+        title: 
+          type: string
+          example: "Clean Code"
+          nullable: true
+        author:
+          type: string
+          example: "Robert C. Martin"
+          nullable: true
+        price:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Giá sách tính bằng VNĐ"
+          example: 100000
+    NotFoundError:
+      type: object
+      required:
+        - statusCode
+        - message
+      properties:
+        statusCode:
+          type: integer
+          enum: [404]
+        message: 
+          type: string
+          example: "book not found"
+    UnauthorizedError:
+      type: object
+      required:
+        - statusCode
+        - message
+      properties:
+        statusCode:
+          type: integer
+          enum: [401]
+        message:
+          type: string 
+          example: "unauthorized user"
+    ForbiddenError:
+      type: object
+      required:
+        - statusCode
+        - message
+      properties:
+        statusCode:
+          type: integer
+          enum: [403]
+        message:
+          type: string
+          example: "forbidden user"
