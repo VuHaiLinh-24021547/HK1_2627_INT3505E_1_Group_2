@@ -1,10 +1,10 @@
 * **API endpoints: status code**
-    * GET /books: 200, 401 (Dinh Phuc Hung)
-    * GET /books/<int:id>: 200, 404, 304, 401 (Dinh Phuc Hung)
-    * POST /books: 201, 401 (Pham Quoc Anh)
-    * PUT /books/<int:id>: 200, 404, 400, 401 (Pham Quoc Anh)
-    * PATCH /books/<int:id>: 200, 404, 401 (Vu Hai Linh)
-    * DELETE /books/<int:id>: 204, 404, 401 (Vu Hai Linh)
+    * GET /books: 200, 401, 403 (Dinh Phuc Hung)
+    * GET /books/<int:id>: 200, 404, 304, 401, 403 (Dinh Phuc Hung)
+    * POST /books: 201, 400, 401, 403 (Pham Quoc Anh)
+    * PUT /books/<int:id>: 200, 404, 400, 401, 403 (Pham Quoc Anh)
+    * PATCH /books/<int:id>: 200, 404, 401, 403, 400 (Vu Hai Linh)
+    * DELETE /books/<int:id>: 204, 404, 401, 403 (Vu Hai Linh)
 * **Requirements:**
     * Use OpenAPI 3.0
     * Example for each schema
