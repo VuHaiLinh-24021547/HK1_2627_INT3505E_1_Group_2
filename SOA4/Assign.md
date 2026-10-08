@@ -6,6 +6,7 @@
     * PATCH /books/<int:id>: 200, 404, 401 (Vu Hai Linh)
     * DELETE /books/<int:id>: 204, 404, 401 (Vu Hai Linh)
 * **Requirements:**
+    * Use OpenAPI 3.0
     * Example for each schema
     * Write schema ref in components
     * Authorization for all endpoints(root level security only, don't need to write distinct authorization for each endpoints)
