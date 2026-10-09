@@ -40,7 +40,9 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '400':
-          $ref: '#components/responses/IncorrectFieldType'
+          $ref: '#components/responses/MissingBody'
+        '422':
+          $ref: '#components/responses/FieldError'
     delete:
       summary: Xóa sách
       operationId: deleteBook
@@ -85,12 +87,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ForbiddenError'
-    'IncorrectFieldType':
-      description: Người dùng nhập sai kiểu của 1 trường
+    'MissingBody':
+      description: Người dùng chưa nhập body
       content: 
         application/json:
           schema:
-            $ref: '#/components/schemas/IncorrectFieldTypeError'
+            $ref: '#/components/schemas/MissingBodyError'
+    'FieldError':
+      description: Người dùng vi phạm quy tắc của trường dữ liệu
+      contnet:
+        application/json:
+          schema:
+            $ref: '#components/schemas/FieldError'
   schemas:
     Book:
       type: object
@@ -168,15 +176,27 @@ components:
         message:
           type: string
           example: "forbidden user"
-    IncorrectFieldTypeError:
+    MissingBodyError:
       type: object
       required:
-        -statusCode
-        -message
+        - statusCode
+        - message
       properties:
         statusCode:
           type: integer
           enum: [400]
         message:
           type: string
-          example: "Trường author sai kiểu dữ liệu"
+          example: "Thiếu body"
+    FieldError:
+      type: object
+      required:
+        - statusCode
+        - message
+      properties:
+        statusCode:
+          type: integer
+          enum: [422]
+        message:
+          type: string
+          example: "Price phải lớn hơn 0"
