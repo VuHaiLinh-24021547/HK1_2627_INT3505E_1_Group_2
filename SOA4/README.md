@@ -1,12 +1,12 @@
 # HK1_2627_INT3505E_1_Group_2
 
 **1.Endpoints**
-GET /books
-GET /books/{book_id}
-POST /books
-PUT /books/{book_id}
-PATCH /books/{book_id}
-DELETE /books/{book_id}
+* GET /books
+* GET /books/{book_id}
+* POST /books
+* PUT /books/{book_id}
+* PATCH /books/{book_id}
+* DELETE /books/{book_id}
 **2.Reponses for each endpoint**
 * **GET /books**
 * **GET /books/{book_id}**
