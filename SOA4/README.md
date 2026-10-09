@@ -7,6 +7,7 @@
 * PUT /books/{book_id}
 * PATCH /books/{book_id}
 * DELETE /books/{book_id}
+
 **2.Reponses for each endpoint**
 * **GET /books**
 * **GET /books/{book_id}**
