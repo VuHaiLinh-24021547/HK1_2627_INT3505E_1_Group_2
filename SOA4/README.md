@@ -30,6 +30,7 @@
     * Delete success, 204
     ![status_code](/img/delete/delete_204.png)
     ![no_body](/img/delete/delete_success.png)
+    
     * Missing bearer token, 401
     ![missing_token](/img/delete/delete_401.png)
     * Forbidden from delete, 403
