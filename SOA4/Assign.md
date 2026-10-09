@@ -10,6 +10,7 @@
     * Example for each schema
     * Write schema ref in components
     * Authorization for all endpoints(root level security only, don't need to write distinct authorization for each endpoints)
+    * Write Flask app for your endpoints
 * **Notes:**
     * Use ref for every reponses of endpoints if they are long or they can be reused(for example, book's detail can be reused for GET, POST, PUT, PATCH)
     * Pull code to your own branch. Do not push to main branch
