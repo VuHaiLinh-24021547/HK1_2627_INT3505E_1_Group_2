@@ -37,3 +37,18 @@
     ![forbidden](/img/delete/delete_403.png)
     * Book not ofund, 404
     ![not_found](/img/delete/delete_404.png)
+**3.Try it out with Swagger UI**
+* **Patch**
+    * Success
+    ![success](/img/swagger_ui/patch/swagger_patch_200_1.png)
+    ![success](/img/swagger_ui/patch/swagger_patch_200_2.png)
+
+    * Missing token
+    ![missing_token](/img/swagger_ui/patch/swagger_patch_401_1.png)
+    ![missing_token](/img/swagger_ui/patch/swagger_patch_401_2.png)
+* **Delete**
+    * Success
+    ![success](/img/swagger_ui/delete/swagger_delete_204.png)
+
+    * Missing token
+    ![missing_token](/img/swagger_ui/delete/swagger_delete_401.png)

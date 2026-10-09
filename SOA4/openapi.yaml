@@ -1,11 +1,11 @@
-openapi: 3.0.4
+openapi: 3.0.3
 info:
   title: Book Management API
   description: Quản lý hệ thống sách
   version: 1.0.0
 
 servers:
-  - url: https://system.book.com/v1
+  - url: http://127.0.0.1:5000
     description: Main Server 
 
 security:
@@ -18,11 +18,13 @@ paths:
         name: bookId
         required: true
         schema:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         description: ID duy nhất của sách
     patch:
       summary: Cập nhật một phần thông tin sách
+      security:
+        - bearerAuth: []
       operationId: patchBook
       requestBody:
         required: true
@@ -33,28 +35,30 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/PatchSuccess'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/MissingBody'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '400':
-          $ref: '#components/responses/MissingBody'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#components/responses/FieldError'
+          $ref: '#/components/responses/FieldError'
     delete:
       summary: Xóa sách
+      security:
+        - bearerAuth: []
       operationId: deleteBook
       responses:
         '204': 
           description: Xóa sách thành công
-        '404':
-          $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 components:
   securitySchemes:
@@ -64,11 +68,11 @@ components:
       bearerFormat: JWT
   responses:
     'PatchSuccess':
-        description: Sửa thông tin sách thành công
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Book'
+      description: Sửa thông tin sách thành công
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Book'
     'NotFound':
       description: Không tìm thấy sách
       content:
@@ -95,10 +99,10 @@ components:
             $ref: '#/components/schemas/MissingBodyError'
     'FieldError':
       description: Người dùng vi phạm quy tắc của trường dữ liệu
-      contnet:
+      content:
         application/json:
           schema:
-            $ref: '#components/schemas/FieldError'
+            $ref: '#/components/schemas/FieldError'
   schemas:
     Book:
       type: object

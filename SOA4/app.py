@@ -1,6 +1,8 @@
 from functools import wraps
 from flask import Flask, jsonify, request
+from flask_swagger_ui import get_swaggerui_blueprint
 import jwt
+import yaml
 
 app = Flask(__name__)
 
@@ -15,6 +17,20 @@ BOOKS = [
     {"id": 6, "title": "Book 6", "author": "Author 6", "price": 60000},
     {"id": 7, "title": "Book 7", "author": "Author 7", "price": 70000},
 ]
+
+@app.route("/openapi.json")
+def openapi_spec():
+    with open("openapi.yaml", "r", encoding="utf-8") as f:
+        spec = yaml.safe_load(f)
+    return jsonify(spec)
+
+SWAGGER_URL = "/docs"
+API_URL = "/openapi.json" 
+
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL, API_URL, config={"app_name": "Tasks API Documentation"}
+)
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 def role_required(allowed_roles):
     def decorator(f):
@@ -134,4 +150,4 @@ def deleteBook(bid):
     return "", 204
 
 if (__name__ == "__main__"):
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000)
