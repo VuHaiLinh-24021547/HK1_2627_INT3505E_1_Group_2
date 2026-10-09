@@ -20,7 +20,7 @@ BOOKS = [
 
 @app.route("/openapi.json")
 def openapi_spec():
-    with open("openapi.yaml", "r", encoding="utf-8") as f:
+    with open("book-management-api.yaml", "r", encoding="utf-8") as f:
         spec = yaml.safe_load(f)
     return jsonify(spec)
 
@@ -150,4 +150,4 @@ def deleteBook(bid):
     return "", 204
 
 if (__name__ == "__main__"):
-    app.run(host="127.0.0.1", port=5000)
+    app.run(host="127.0.0.1", port=5000, debug=True)
