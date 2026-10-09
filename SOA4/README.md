@@ -37,6 +37,7 @@
     ![forbidden](/img/delete/delete_403.png)
     * Book not ofund, 404
     ![not_found](/img/delete/delete_404.png)
+    
 **3.Try it out with Swagger UI**
 * **Patch**
     * Success
