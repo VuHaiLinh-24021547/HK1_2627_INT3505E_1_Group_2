@@ -106,6 +106,23 @@ def login_admin():
     )
     return jsonify({"access_token": token, "role": "admin"})
 
+@app.route("/books", methods=["GET"])
+@role_required(["admin", "viewer"])
+def getBooks():
+    return jsonify(BOOKS), 200
+
+@app.route("/books/<int:bid>", methods=["GET"])
+@role_required(["admin", "viewer"])
+def getBook(bid):
+    book = next((b for b in BOOKS if b["id"] == bid), None)
+    if book is None:
+        return jsonify({
+            "statusCode": 404,
+            "message": "Not found"
+        }), 404
+        
+    return jsonify(book), 200
+
 @app.patch("/books/<int:bid>")
 @role_required("admin")
 def patchBook(bid):

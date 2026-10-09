@@ -12,6 +12,19 @@ security:
   - bearerAuth: []
 
 paths:
+  /books:
+    get:
+      summary: Lấy danh sách toàn bộ sách
+      security:
+        - bearerAuth: []
+      operationId: getBooks
+      responses:
+        '200':
+          $ref: '#/components/responses/GetBooksSuccess'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /books/{bookId}:
     parameters:
       - in: path
@@ -21,6 +34,22 @@ paths:
           type: integer
           format: int64
         description: ID duy nhất của sách
+    get:
+      summary: Lấy thông tin một cuốn sách theo ID
+      security:
+        - bearerAuth: []
+      operationId: getBookById
+      responses:
+        '200':
+          $ref: '#/components/responses/GetBookSuccess'
+        '304':
+          description: "Not Modified"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       summary: Cập nhật một phần thông tin sách
       security:
@@ -67,6 +96,20 @@ components:
       scheme: bearer 
       bearerFormat: JWT
   responses:
+    'GetBooksSuccess':
+      description: Lấy danh sách sách thành công
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Book'
+    'GetBookSuccess':
+      description: Lấy thông tin sách thành công
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Book'
     'PatchSuccess':
       description: Sửa thông tin sách thành công
       content:
