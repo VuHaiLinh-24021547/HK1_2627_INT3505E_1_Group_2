@@ -25,6 +25,28 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Thêm sách mới
+      security:
+        - bearerAuth: []
+      operationId: createBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/PostSuccess'
+        '400':
+          $ref: '#/components/responses/MissingBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/FieldError'
   /books/{bookId}:
     parameters:
       - in: path
@@ -50,6 +72,30 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+    put:
+      summary: Thay thế thông tin sách
+      security:
+        - bearerAuth: []
+      operationId: putBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceBookInput'
+      responses:
+        '200':
+          $ref: '#/components/responses/PutSuccess'
+        '400':
+          $ref: '#/components/responses/MissingBody'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/FieldError'
     patch:
       summary: Cập nhật một phần thông tin sách
       security:
@@ -112,6 +158,18 @@ components:
             $ref: '#/components/schemas/Book'
     'PatchSuccess':
       description: Sửa thông tin sách thành công
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Book'
+    'PostSuccess':
+      description: Thêm sách thành công
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Book'
+    'PutSuccess':
+      description: Thay thế thông tin sách thành công
       content:
         application/json:
           schema:
@@ -181,6 +239,44 @@ components:
           type: string
           example: "Robert C. Martin"
           nullable: true
+        price:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Giá sách tính bằng VNĐ"
+          example: 100000
+    CreateBookInput:
+      type: object
+      required:
+        - title
+        - author
+        - price
+      properties:
+        title:
+          type: string
+          example: "Clean Code"
+        author:
+          type: string
+          example: "Robert C. Martin"
+        price:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Giá sách tính bằng VNĐ"
+          example: 100000
+    ReplaceBookInput:
+      type: object
+      required:
+        - title
+        - author
+        - price
+      properties:
+        title:
+          type: string
+          example: "Clean Code"
+        author:
+          type: string
+          example: "Robert C. Martin"
         price:
           type: integer
           format: int64

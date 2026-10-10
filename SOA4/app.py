@@ -111,6 +111,38 @@ def login_admin():
 def getBooks():
     return jsonify(BOOKS), 200
 
+@app.post("/books")
+@role_required(["admin"])
+def createBook():
+    data = request.get_json(silent=True) or {}
+    if not data:
+        return jsonify({
+            "statusCode": 400,
+            "message": "Missing body"
+        }), 400
+
+    required_fields = ("title", "author", "price")
+    if any(field not in data for field in required_fields):
+        return jsonify({
+            "statusCode": 422,
+            "message": "Title, author, and price are required"
+        }), 422
+
+    if (data["price"] < 0):
+        return jsonify({
+            "statusCode": 422,
+            "message": "Price must be larger than 0"
+        }), 422
+
+    book = {
+        "id": max((b["id"] for b in BOOKS), default=0) + 1,
+        "title": data["title"],
+        "author": data["author"],
+        "price": data["price"],
+    }
+    BOOKS.append(book)
+    return jsonify(book), 201
+
 @app.route("/books/<int:bid>", methods=["GET"])
 @role_required(["admin", "viewer"])
 def getBook(bid):
@@ -122,6 +154,44 @@ def getBook(bid):
         }), 404
         
     return jsonify(book), 200
+
+@app.route("/books/<int:bid>", methods=["PUT"])
+@role_required(["admin"])
+def putBook(bid):
+    i = next((k for k, b in enumerate(BOOKS) if b["id"] == bid), None)
+    if i is None:
+        return jsonify({
+            "statusCode": 404,
+            "message": "Not found"
+        }), 404
+
+    data = request.get_json(silent=True) or {}
+    if not data:
+        return jsonify({
+            "statusCode": 400,
+            "message": "Missing body"
+        }), 400
+
+    required_fields = ("title", "author", "price")
+    if any(field not in data for field in required_fields):
+        return jsonify({
+            "statusCode": 422,
+            "message": "Title, author, and price are required"
+        }), 422
+
+    if (data["price"] < 0):
+        return jsonify({
+            "statusCode": 422,
+            "message": "Price must be larger than 0"
+        }), 422
+
+    BOOKS[i] = {
+        "id": bid,
+        "title": data["title"],
+        "author": data["author"],
+        "price": data["price"],
+    }
+    return jsonify(BOOKS[i]), 200
 
 @app.patch("/books/<int:bid>")
 @role_required("admin")
