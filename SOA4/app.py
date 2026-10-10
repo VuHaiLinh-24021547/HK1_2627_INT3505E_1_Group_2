@@ -18,6 +18,8 @@ BOOKS = [
     {"id": 7, "title": "Book 7", "author": "Author 7", "price": 70000},
 ]
 
+_next_id = 8
+
 @app.route("/openapi.json")
 def openapi_spec():
     with open("book-management-api.yaml", "r", encoding="utf-8") as f:
@@ -114,6 +116,8 @@ def getBooks():
 @app.post("/books")
 @role_required(["admin"])
 def createBook():
+    global _next_id
+
     data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({
@@ -135,12 +139,14 @@ def createBook():
         }), 422
 
     book = {
-        "id": max((b["id"] for b in BOOKS), default=0) + 1,
+        "id": _next_id,
         "title": data["title"],
         "author": data["author"],
         "price": data["price"],
     }
     BOOKS.append(book)
+
+    _next_id += 1
     return jsonify(book), 201
 
 @app.route("/books/<int:bid>", methods=["GET"])

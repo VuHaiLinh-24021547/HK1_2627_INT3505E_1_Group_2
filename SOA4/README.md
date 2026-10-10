@@ -12,6 +12,16 @@
 * **GET /books**
 * **GET /books/{book_id}**
 * **POST /books**
+    * Post success, 201
+    ![post_success](/SOA4/img/post/post_201.png)
+    * Missing bearer token, 401
+    ![missing_token](/SOA4/img/post/post_401.png)
+    * Forbidden from post, 403
+    ![forbidden](/SOA4/img/post/post_403.png)
+    * Missing body, 400
+    ![missing_body](/SOA4/img/post/post_400.png)
+    * Violate a rule of a field data or missing field, 422
+    ![something](/SOA4/img/post/post_422.png)
 * **PUT /books/{book_id}**
 * **PATCH /books/{book_id}**
     * Patch success, 200
@@ -39,6 +49,24 @@
     ![not_found](/SOA4/img/delete/delete_404.png)
     
 **3.Try it out with Swagger UI**
+* **GET**
+    * Success
+
+    * Missing token
+
+* **GET with id**
+    * Success
+
+    * Missing token
+    
+* **POST**
+    * Success
+    ![success](/SOA4/img/swagger_ui/post/swagger_post_201_1.png)
+    ![success](/SOA4/img/swagger_ui/post/swagger_post_201_2.png)
+
+    * Missing token
+    ![missing_token](/SOA4/img/swagger_ui/post/swagger_post_401_1.png)
+    ![missing_token](/SOA4/img/swagger_ui/post/swagger_post_401_2.png)
 * **Patch**
     * Success
     ![success](/SOA4/img/swagger_ui/patch/swagger_patch_200_1.png)
