@@ -81,3 +81,18 @@
 
     * Missing token
     ![missing_token](/SOA4/img/swagger_ui/delete/swagger_delete_401.png)
+
+** 4. 2 Quyết định Thiết kế Khó nhất**
+* **Phân định ranh giới giữa HTTP Status Code 400 và 422 trong thao tác PATCH**
+    * Phương thức PATCH được sử dụng để cập nhật một phần thông tin tài nguyên sách (title, author, price), PATCH chấp nhận body chứa một hoặc nhiều trường dữ liệu tùy chọn. Thách thức đặt ra là làm thế nào để phản hồi lỗi chính xác cho client khi dữ liệu gửi lên không hợp lệ.
+    * Hướng giải quyết: trả về 400 Bad Request khi client gọi PATCH nhưng không gửi JSON body hoặc body rỗng, trả vef Unprocessable Entity khi JSON body có cú pháp hợp lệ nhưng giá trị truyền vào vi phạm quy tắc nghiệp vụ(price < 0 hoặc sai kiểu dữ liệu)
+    * Cách phân định này giúp client lập tức biết nguyên nhân lỗi đến từ cú pháp hay từ dữ liệu nhập không thỏa mãn điều kiện logic
+* **Phân biệt 401 Unauthorized vs 403 Forbidden và nhúng Role vào Stateless JWT Payload**
+    * Hệ thống cần phân quyền truy cập:
+        * Người dùng có vai trò viewer chỉ có quyền xem thông tin.
+        * Người dùng có vai trò admin mới được phép chỉnh sửa (PATCH) hoặc xóa (DELETE) sách.
+    * Phân biệt chính xác hai trạng thái lỗi xác thực (Authentication) và phân quyền (Authorization), đồng thời kiểm tra quyền hạn một cách hiệu quả mà không làm giảm hiệu năng server.
+    * Hướng giải quyết: Nhúng role trực tiếp vào Payload của JWT Token khi đăng nhập và kiểm tra phân quyền bằng Custom Decorator @role_required.
+        * Payload của JWT: Khi cấp Token tại /login/admin hoặc /login/viewer, thông tin role được đưa trực tiếp vào payload: {"user": "admin", "role": "admin"}. Chữ ký JWT (Signature) đảm bảo Token này không thể bị sửa đổi bởi phía Client.
+        * Phân định rõ 2 Status Code bảo mật: 401 Unauthorized: Trả về khi request thiếu Token, Token hết hạn hoặc Token bị sai định dạng / sai chữ ký. Đây là lỗi ở khâu xác minh danh tính. 403 Forbidden: Trả về khi Token hoàn toàn hợp lệ, danh tính người dùng đã được xác nhận, nhưng role của người dùng (ví dụ: viewer) không có quyền thực hiện hành động PATCH hay DELETE. Đây là lỗi ở khâu phân quyền hạn.
+    * Quyết định này giúp giảm thiểu việc truy vấn cơ sở dữ liệu không cần thiết, tối ưu hóa tốc độ xử lý request và đảm bảo chuẩn mực thiết kế RESTful Security.
