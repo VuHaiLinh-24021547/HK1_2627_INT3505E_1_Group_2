@@ -10,7 +10,23 @@
 
 **2.Reponses for each endpoint**
 * **GET /books**
+    * Get all books success, 200
+    ![get_all_success](/SOA4/img/get/get_books_200.png)
+    * Missing bearer token, 401
+    ![missing_token](/SOA4/img/get/get_books_401.png)
+    * Forbidden, 403
+    ![forbidden](/SOA4/img/get/get_books_403.png)
 * **GET /books/{book_id}**
+    * Get book success, 200
+    ![get_book_success](/SOA4/img/get/get_book_id_200.png)
+    * Not modified, 304
+    ![not_modified](/SOA4/img/get/get_book_id_304.png)
+    * Book not found, 404
+    ![not_found](/SOA4/img/get/get_book_id_404.png)
+    * Missing bearer token, 401
+    ![missing_token](/SOA4/img/get/get_book_id_401.png)
+    * Forbidden, 403
+    ![forbidden](/SOA4/img/get/get_book_id_403.png)
 * **POST /books**
     * Post success, 201
     ![post_success](/SOA4/img/post/post_201.png)
@@ -49,24 +65,14 @@
     ![not_found](/SOA4/img/delete/delete_404.png)
     
 **3.Try it out with Swagger UI**
-* **GET**
+* **Get**
     * Success
+    ![success](/SOA4/img/swagger_ui/get/swagger_get_200_1.png)
+    ![success](/SOA4/img/swagger_ui/get/swagger_get_200_2.png)
 
     * Missing token
-
-* **GET with id**
-    * Success
-
-    * Missing token
-    
-* **POST**
-    * Success
-    ![success](/SOA4/img/swagger_ui/post/swagger_post_201_1.png)
-    ![success](/SOA4/img/swagger_ui/post/swagger_post_201_2.png)
-
-    * Missing token
-    ![missing_token](/SOA4/img/swagger_ui/post/swagger_post_401_1.png)
-    ![missing_token](/SOA4/img/swagger_ui/post/swagger_post_401_2.png)
+    ![missing_token](/SOA4/img/swagger_ui/get/swagger_get_401_1.png)
+    ![missing_token](/SOA4/img/swagger_ui/get/swagger_get_401_2.png)
 * **Patch**
     * Success
     ![success](/SOA4/img/swagger_ui/patch/swagger_patch_200_1.png)
