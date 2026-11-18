@@ -1,0 +1,863 @@
+openapi: 3.0.3
+info:
+  title: League of Legends Match History API
+  description: >-
+    RESTful API (op.gg clone) for League of Legends match history, players,
+    champions, items, objectives, and in-game events.
+    Supports JWT & OAuth 2.0 authentication, admin-only DELETE RBAC,
+    paginated & cached GET responses, and strict JSON error handling.
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:5000/api/v1
+    description: Local Development Server
+
+tags:
+  - name: Auth
+    description: JWT & OAuth 2.0 authentication endpoints
+  - name: Players
+    description: Player profiles and recent match history
+  - name: Games
+    description: Match records and in-game events
+  - name: Champions
+    description: Champion catalog
+  - name: Items
+    description: Item catalog
+  - name: Objectives
+    description: In-game objective catalog
+  - name: PlayerGameInfo
+    description: Player-in-game statistics (planned)
+
+security:
+  - BearerAuth: []
+  - OAuth2: [read]
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Issue JWT access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: JWT token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/oauth/token:
+    post:
+      tags: [Auth]
+      summary: OAuth 2.0 token endpoint (Client Credentials / Authorization Code)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OAuthTokenRequest'
+      responses:
+        '200':
+          description: OAuth 2.0 access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /players:
+    get:
+      tags: [Players]
+      summary: List players (summary projection)
+      description: Returns only `id` and `name_with_hashtag`. Paginated and cached.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated list of players
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=60
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlayerSummary'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Players]
+      summary: Create a player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerInput'
+      responses:
+        '201':
+          description: Player created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PlayerDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /players/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPathParam'
+    get:
+      tags: [Players]
+      summary: Get player by ID (full fields)
+      description: Returns all player fields including up to 20 recent game IDs. Cached.
+      responses:
+        '200':
+          description: Full player details
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=60
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PlayerDetail'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Players]
+      summary: Replace player (idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerInput'
+      responses:
+        '200':
+          description: Player updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PlayerDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Players]
+      summary: Delete player (admin role only, idempotent)
+      security:
+        - BearerAuth: []
+        - OAuth2: [admin]
+      responses:
+        '204':
+          description: Player deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /games:
+    get:
+      tags: [Games]
+      summary: List games (summary projection)
+      description: Returns `id`, `players_id`, `champion_id`, `team_win`, and `time_end`. Paginated and cached.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated list of games
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=60
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GameSummary'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Games]
+      summary: Record a new game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameInput'
+      responses:
+        '201':
+          description: Game created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GameDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /games/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPathParam'
+    get:
+      tags: [Games]
+      summary: Get game by ID with all events
+      description: Returns all fields in `game` and all associated `event_in_game` records. Cached.
+      responses:
+        '200':
+          description: Full game details with events
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=60
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GameDetail'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Games]
+      summary: Replace game record (idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameInput'
+      responses:
+        '200':
+          description: Game updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GameDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Games]
+      summary: Delete game (admin role only, idempotent)
+      security:
+        - BearerAuth: []
+        - OAuth2: [admin]
+      responses:
+        '204':
+          description: Game deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /champions:
+    get:
+      tags: [Champions]
+      summary: List champions
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated list of champions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogEntity'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Champions]
+      summary: Create a champion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: Champion created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CatalogEntity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /champions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPathParam'
+    delete:
+      tags: [Champions]
+      summary: Delete champion (admin role only, idempotent)
+      security:
+        - BearerAuth: []
+        - OAuth2: [admin]
+      responses:
+        '204':
+          description: Champion deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /items:
+    get:
+      tags: [Items]
+      summary: List items
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated list of items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogEntity'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Items]
+      summary: Create an item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: Item created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CatalogEntity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /items/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPathParam'
+    delete:
+      tags: [Items]
+      summary: Delete item (admin role only, idempotent)
+      security:
+        - BearerAuth: []
+        - OAuth2: [admin]
+      responses:
+        '204':
+          description: Item deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /objectives:
+    get:
+      tags: [Objectives]
+      summary: List objectives
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated list of objectives
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogEntity'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Objectives]
+      summary: Create an objective
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogInput'
+      responses:
+        '201':
+          description: Objective created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CatalogEntity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /objectives/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPathParam'
+    delete:
+      tags: [Objectives]
+      summary: Delete objective (admin role only, idempotent)
+      security:
+        - BearerAuth: []
+        - OAuth2: [admin]
+      responses:
+        '204':
+          description: Objective deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /players_games_info:
+    get:
+      tags: [PlayerGameInfo]
+      summary: Get player-game performance info (planned)
+      description: Planned endpoint for querying per-player stats in a specific game.
+      parameters:
+        - name: player_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: game_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated player-game info
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token with `sub` and `role` (`user` | `admin`) claims.
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /api/v1/auth/oauth/token
+          scopes:
+            read: Read match history data
+            write: Create and update match history data
+            admin: Perform destructive operations (DELETE)
+
+  parameters:
+    IdPathParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPageParam:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    OAuthTokenRequest:
+      type: object
+      required: [grant_type, client_id, client_secret]
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials, authorization_code]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        scope:
+          type: string
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          example: 3600
+
+    PlayerSummary:
+      type: object
+      required: [id, name_with_hashtag]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name_with_hashtag:
+          type: string
+          example: Faker#KR1
+
+    PlayerDetail:
+      allOf:
+        - $ref: '#/components/schemas/PlayerSummary'
+        - type: object
+          required: [recent_games_id]
+          properties:
+            recent_games_id:
+              type: array
+              maxItems: 20
+              items:
+                type: integer
+
+    PlayerInput:
+      type: object
+      required: [name_with_hashtag]
+      properties:
+        name_with_hashtag:
+          type: string
+          example: Faker#KR1
+
+    GameSummary:
+      type: object
+      required: [id, players_id, champion_id, team_win, time_end]
+      properties:
+        id:
+          type: integer
+        players_id:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: integer
+        champion_id:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: integer
+        team_win:
+          type: string
+          enum: [red, blue]
+        time_end:
+          type: string
+          format: date-time
+
+    GameDetail:
+      allOf:
+        - $ref: '#/components/schemas/GameSummary'
+        - type: object
+          required: [objective_id, champion_level_in_the_end, events]
+          properties:
+            objective_id:
+              type: integer
+            champion_level_in_the_end:
+              type: array
+              minItems: 10
+              maxItems: 10
+              items:
+                type: integer
+                minimum: 1
+                maximum: 18
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/EventInGame'
+
+    GameInput:
+      type: object
+      required:
+        - players_id
+        - champion_id
+        - objective_id
+        - time_end
+        - team_win
+        - champion_level_in_the_end
+      properties:
+        players_id:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: integer
+        champion_id:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: integer
+        objective_id:
+          type: integer
+        time_end:
+          type: string
+          format: date-time
+        team_win:
+          type: string
+          enum: [red, blue]
+        champion_level_in_the_end:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: integer
+            minimum: 1
+            maximum: 18
+
+    EventInGame:
+      type: object
+      required: [id, game_id, time_stamp, event_type]
+      properties:
+        id:
+          type: integer
+        game_id:
+          type: integer
+        time_stamp:
+          type: integer
+          description: Seconds elapsed since game start
+          minimum: 0
+        event_type:
+          type: string
+          enum:
+            - red kill
+            - blue kill
+            - red take objective
+            - blue take objective
+
+    CatalogEntity:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+
+    CatalogInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    PaginationMeta:
+      type: object
+      required: [page, per_page, total, total_pages]
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+  responses:
+    NotModified:
+      description: Cached response is still valid
+    BadRequest:
+      description: Invalid request payload or query parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid, or expired JWT/OAuth2 token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions (admin role required for DELETE)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
