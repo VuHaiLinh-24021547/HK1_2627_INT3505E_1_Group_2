@@ -1,0 +1,84 @@
+{
+  "versions": ["16.23.1", "16.22.1", "16.21.1"],
+  "champion": {
+    "type": "champion",
+    "version": "16.23.1",
+    "data": {
+      "Yasuo": {
+        "id": "Yasuo",
+        "key": "157",
+        "name": "Yasuo",
+        "title": "Kẻ Bất Dung Thứ",
+        "image": {"full": "Yasuo.png"}
+      },
+      "Aatrox": {
+        "id": "Aatrox",
+        "key": "266",
+        "name": "Aatrox",
+        "title": "Quỷ Kiếm Darkin",
+        "image": {"full": "Aatrox.png"}
+      }
+    }
+  },
+  "item": {
+    "type": "item",
+    "version": "16.23.1",
+    "data": {
+      "3153": {
+        "name": "Gươm Của Vua Vô Danh",
+        "gold": {"total": 3200},
+        "image": {"full": "3153.png"}
+      },
+      "3031": {
+        "name": "Vô Cực Kiếm",
+        "gold": {"total": 3400},
+        "image": {"full": "3031.png"}
+      }
+    }
+  },
+  "runes": [
+    {
+      "id": 8000,
+      "name": "Chuẩn Xác",
+      "icon": "perk-images/Styles/7201_Precision.png",
+      "slots": [
+        {
+          "runes": [
+            {
+              "id": 8008,
+              "name": "Nhịp Độ Chết Người",
+              "icon": "perk-images/Styles/Precision/LethalTempo/LethalTempoTemp.png"
+            }
+          ]
+        },
+        {
+          "runes": [
+            {
+              "id": 9111,
+              "name": "Đắc Thắng",
+              "icon": "perk-images/Styles/Precision/Triumph.png"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "summoner": {
+    "type": "summoner",
+    "version": "16.23.1",
+    "data": {
+      "SummonerFlash": {
+        "id": "SummonerFlash",
+        "key": "4",
+        "name": "Tốc Biến",
+        "image": {"full": "SummonerFlash.png"}
+      },
+      "SummonerDot": {
+        "id": "SummonerDot",
+        "key": "14",
+        "name": "Thiêu Đốt",
+        "image": {"full": "SummonerDot.png"}
+      }
+    }
+  }
+}

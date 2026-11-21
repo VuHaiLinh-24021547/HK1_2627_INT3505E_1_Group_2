@@ -1,0 +1,18 @@
+[
+  {
+    "queueType": "RANKED_FLEX_SR",
+    "tier": "EMERALD",
+    "rank": "I",
+    "leaguePoints": 45,
+    "wins": 20,
+    "losses": 15
+  },
+  {
+    "queueType": "RANKED_SOLO_5x5",
+    "tier": "DIAMOND",
+    "rank": "II",
+    "leaguePoints": 64,
+    "wins": 72,
+    "losses": 58
+  }
+]

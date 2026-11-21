@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "matchId": "VN2_492817261",
+    "participants": [
+      "bot-p1", "bot-p2", "test-puuid-player1-vn2-00000000000000000000000000000000000000000001", "bot-p4", "bot-p5",
+      "bot-p6", "bot-p7", "bot-p8", "bot-p9", "bot-p10"
+    ]
+  },
+  "info": {
+    "frameInterval": 60000,
+    "participants": [
+      {"participantId": 1, "puuid": "bot-p1"},
+      {"participantId": 2, "puuid": "bot-p2"},
+      {"participantId": 3, "puuid": "test-puuid-player1-vn2-00000000000000000000000000000000000000000001"},
+      {"participantId": 4, "puuid": "bot-p4"},
+      {"participantId": 5, "puuid": "bot-p5"},
+      {"participantId": 6, "puuid": "bot-p6"},
+      {"participantId": 7, "puuid": "bot-p7"},
+      {"participantId": 8, "puuid": "bot-p8"},
+      {"participantId": 9, "puuid": "bot-p9"},
+      {"participantId": 10, "puuid": "bot-p10"}
+    ],
+    "frames": [
+      {
+        "timestamp": 600000,
+        "participantFrames": {
+          "1": {"participantId": 1, "totalGold": 3500, "xp": 4500},
+          "2": {"participantId": 2, "totalGold": 3400, "xp": 4300},
+          "3": {"participantId": 3, "totalGold": 4000, "xp": 5000},
+          "4": {"participantId": 4, "totalGold": 3600, "xp": 4100},
+          "5": {"participantId": 5, "totalGold": 2350, "xp": 3520},
+          "6": {"participantId": 6, "totalGold": 3300, "xp": 4400},
+          "7": {"participantId": 7, "totalGold": 3200, "xp": 4200},
+          "8": {"participantId": 8, "totalGold": 3500, "xp": 4700},
+          "9": {"participantId": 9, "totalGold": 3600, "xp": 4200},
+          "10": {"participantId": 10, "totalGold": 2400, "xp": 3500}
+        },
+        "events": [
+          {"type": "ITEM_PURCHASED", "timestamp": 590000, "participantId": 3, "itemId": 3006},
+          {"type": "WARD_PLACED", "timestamp": 595000, "creatorId": 5}
+        ]
+      },
+      {
+        "timestamp": 900000,
+        "participantFrames": {
+          "1": {"participantId": 1, "totalGold": 5500, "xp": 7200},
+          "2": {"participantId": 2, "totalGold": 5400, "xp": 6900},
+          "3": {"participantId": 3, "totalGold": 6400, "xp": 7900},
+          "4": {"participantId": 4, "totalGold": 5800, "xp": 6600},
+          "5": {"participantId": 5, "totalGold": 3800, "xp": 5550},
+          "6": {"participantId": 6, "totalGold": 5000, "xp": 6900},
+          "7": {"participantId": 7, "totalGold": 4900, "xp": 6700},
+          "8": {"participantId": 8, "totalGold": 5200, "xp": 7300},
+          "9": {"participantId": 9, "totalGold": 5600, "xp": 6700},
+          "10": {"participantId": 10, "totalGold": 3800, "xp": 5400}
+        },
+        "events": [
+          {
+            "type": "ELITE_MONSTER_KILL",
+            "timestamp": 912000,
+            "monsterType": "RIFTHERALD",
+            "killerId": 2,
+            "killerTeamId": 100
+          },
+          {
+            "type": "BUILDING_KILL",
+            "timestamp": 930000,
+            "buildingType": "TOWER_BUILDING",
+            "towerType": "OUTER_TURRET",
+            "laneType": "MID_LANE",
+            "teamId": 200,
+            "killerId": 3
+          }
+        ]
+      }
+    ]
+  }
+}

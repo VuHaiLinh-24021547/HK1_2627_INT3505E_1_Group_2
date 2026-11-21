@@ -1,0 +1,327 @@
+{
+  "info": {
+    "name": "LoL Match History API v1",
+    "_postman_id": "lol-match-history-v1-collection",
+    "description": "End-to-end REST API contract tests (OAuth2 RS256, RFC 9457, Idempotency-Key, Cursor Pagination, Cooldown, Match Review, Static Catalog).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Issue OAuth2 Access Token",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"grant_type\":\"client_credentials\",\"client_id\":\"{{clientId}}\",\"client_secret\":\"{{clientSecret}}\"}"
+        },
+        "url": "{{baseUrl}}/api/v1/oauth/tokens"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Returns Bearer access_token', () => {",
+              "  pm.expect(json.token_type).to.eql('Bearer');",
+              "  pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.environment.set('accessToken', json.access_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Service, database and redis are up', () => {",
+              "  pm.expect(json.status).to.eql('ok');",
+              "  pm.expect(json.database).to.eql('up');",
+              "  pm.expect(json.redis).to.eql('up');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get Player Profile",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/regions/{{region}}/players/{{gameName}}/{{tagLine}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Profile contains puuid, soloTier, canSync', () => {",
+              "  pm.expect(json.puuid).to.be.a('string').and.not.empty;",
+              "  pm.expect(json).to.have.property('soloTier');",
+              "  pm.expect(json).to.have.property('canSync');",
+              "});",
+              "pm.environment.set('puuid', json.puuid);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Create Sync Job (Idempotency-Key)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const key = pm.variables.replaceIn('{{$guid}}');",
+              "pm.environment.set('idempotencyKey', key);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 202 Accepted', () => pm.response.to.have.status(202));",
+              "pm.test('Has Location header', () => pm.response.to.have.header('Location'));",
+              "const json = pm.response.json();",
+              "pm.test('Returns jobId', () => pm.expect(json.jobId).to.be.a('string').and.not.empty);",
+              "pm.environment.set('syncJobId', json.jobId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"region\":\"{{region}}\",\"count\":20,\"queueId\":420}"
+        },
+        "url": "{{baseUrl}}/api/v1/players/{{puuid}}/sync-jobs"
+      }
+    },
+    {
+      "name": "4. Replay Sync Job (Same Idempotency-Key)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"region\":\"{{region}}\",\"count\":20,\"queueId\":420}"
+        },
+        "url": "{{baseUrl}}/api/v1/players/{{puuid}}/sync-jobs"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Replays 202 with same jobId', () => {",
+              "  pm.response.to.have.status(202);",
+              "  pm.expect(pm.response.headers.get('Idempotent-Replayed')).to.eql('true');",
+              "  pm.expect(pm.response.json().jobId).to.eql(pm.environment.get('syncJobId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Verify Sync Cooldown (New Idempotency-Key -> 429)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{$guid}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"region\":\"{{region}}\",\"count\":20}"
+        },
+        "url": "{{baseUrl}}/api/v1/players/{{puuid}}/sync-jobs"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 429 Too Many Requests', () => pm.response.to.have.status(429));",
+              "pm.test('Returns RFC 9457 problem+json and Retry-After', () => {",
+              "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+              "  pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.above(0);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Has SYNC_COOLDOWN_ACTIVE and retryAfterSeconds > 0', () => {",
+              "  pm.expect(json.code).to.eql('SYNC_COOLDOWN_ACTIVE');",
+              "  pm.expect(json.retryAfterSeconds).to.be.above(0);",
+              "  pm.expect(json.traceId).to.be.a('string').and.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Get Match History Page 1",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/players/{{puuid}}/matches?limit=5"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Has data array, summary, and cursor pagination', () => {",
+              "  pm.expect(json.data).to.be.an('array').with.lengthOf(5);",
+              "  const p = json.data[0].player;",
+              "  pm.expect(p).to.have.all.keys('puuid','riotId','teamId','teamPosition','championId','win','kills','deaths','assists','kda','csTotal','csPerMin','goldEarned','damageToChamps','visionScore','items','spells','keystoneId');",
+              "  pm.expect(json.pagination.hasMore).to.eql(true);",
+              "  pm.expect(json.pagination.nextCursor).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.environment.set('matchId', json.data[0].matchId);",
+              "pm.environment.set('nextCursor', json.pagination.nextCursor);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Get Match History Page 2 (Cursor)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/players/{{puuid}}/matches?limit=5&cursor={{nextCursor}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 and non-overlapping page 2', () => {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.data).to.be.an('array').with.lengthOf(5);",
+              "  const ids = json.data.map(m => m.matchId);",
+              "  pm.expect(ids).to.not.include(pm.environment.get('matchId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Get Match Review & Timeline",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/matches/{{matchId}}/review?focusPuuid={{puuid}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Contains 2 teams, 10 participants, and Gold/XP diff frames', () => {",
+              "  pm.expect(json.teams).to.be.an('array').with.lengthOf(2);",
+              "  pm.expect(json.participants).to.be.an('array').with.lengthOf(10);",
+              "  pm.expect(json.timeline.frames).to.be.an('array').and.not.empty;",
+              "  pm.expect(json.timeline.frames[0]).to.have.property('blueGoldDiff');",
+              "  pm.expect(json.timeline.frames[0]).to.have.property('blueXpDiff');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Get Static Catalog (latest, vi_VN)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/api/v1/static-catalogs/latest?lang=vi_VN"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 with Cache-Control', () => {",
+              "  pm.response.to.have.status(200);",
+              "  pm.response.to.have.header('Cache-Control');",
+              "});",
+              "const json = pm.response.json();",
+              "pm.test('Contains champions, items, runes, spells', () => {",
+              "  pm.expect(json).to.have.all.keys('patch','lang','champions','items','runes','spells');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Unauthenticated Request Rejected (401)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/static-catalogs/latest"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 401 RFC 9457 with WWW-Authenticate', () => {",
+              "  pm.response.to.have.status(401);",
+              "  pm.response.to.have.header('WWW-Authenticate');",
+              "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
