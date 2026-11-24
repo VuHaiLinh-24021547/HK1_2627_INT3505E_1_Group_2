@@ -1,0 +1,1461 @@
+openapi: 3.0.3
+info:
+  title: RiftReview — LoL Match History & Analytics API
+  version: 1.0.0
+  description: |
+    REST API tra cứu hồ sơ, đồng bộ bất đồng bộ lịch sử đấu Liên Minh Huyền Thoại (Riot Games API + Data Dragon)
+    và phân tích hậu trận phong cách Coachless (LightGBM Win Probability, Player Impact / WPA%, Minimap snapshot).
+
+    ### Quy ước chung
+    - **Versioning:** Mọi business endpoint có tiền tố `/api/v1`.
+    - **Authentication:** OAuth 2.0 `client_credentials` + JWT bất đối xứng (`RS256`/`ES256`) gửi qua header `Authorization: Bearer <token>`.
+    - **Error Handling:** Mọi lỗi `4xx`/`5xx` tuân thủ **RFC 9457** (`application/problem+json`) kèm `traceId` và header `X-Trace-Id`.
+    - **Pagination:** Keyset cursor mờ (Base64-URL + HMAC) trên `(game_creation, match_id)`.
+    - **Idempotency:** `POST /players/{puuid}/sync-jobs` hỗ trợ `Idempotency-Key` (UUIDv4).
+
+servers:
+  - url: http://127.0.0.1:5000/api/v1
+    description: Local Flask server (Dev / DevLite)
+
+tags:
+  - name: System
+    description: Kiểm tra sức khỏe dịch vụ
+  - name: OAuth
+    description: Cấp và thu hồi JWT RS256 (chỉ bật ở Dev/Test)
+  - name: Players
+    description: Tra cứu hồ sơ người chơi & lịch sử đấu phân trang cursor
+  - name: Sync Jobs
+    description: Đồng bộ bất đồng bộ trận đấu mới (Idempotency-Key & Cooldown 120s)
+  - name: Matches
+    description: Chi tiết hậu trận 10 người, Timeline & LightGBM Analytics
+  - name: Static Data
+    description: Danh mục tài nguyên tĩnh Data Dragon theo bản vá
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Kiểm tra trạng thái dịch vụ, DB và Redis
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Hệ thống hoạt động bình thường
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Database hoặc Redis không khả dụng
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /oauth/tokens:
+    post:
+      tags: [OAuth]
+      summary: Cấp JWT Access Token (OAuth 2.0 Client Credentials)
+      description: Chỉ bật ở môi trường Dev/DevLite/Test. Ở Production trả `404` và xác thực qua IdP `JWT_JWKS_URL`.
+      operationId: createOAuthToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Cấp token thành công
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Pragma:
+              schema:
+                type: string
+                example: no-cache
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedBasic"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /oauth/revocations:
+    post:
+      tags: [OAuth]
+      summary: Thu hồi Access Token theo jti (RFC 7009)
+      operationId: revokeOAuthToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevocationRequest"
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/RevocationRequest"
+      responses:
+        "200":
+          description: Đã xử lý yêu cầu thu hồi token
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevocationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedBasic"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /regions/{region}/players/{gameName}/{tagLine}:
+    get:
+      tags: [Players]
+      summary: Tra cứu hồ sơ người chơi theo Riot ID
+      description: |
+        Tra cứu theo thứ tự Redis cache (5 phút) → PostgreSQL → Riot Account-V1 (`asia`/`europe`/`americas`)
+        + Summoner-V4 + League-V4 (`{region}.api.riotgames.com`).
+      operationId: getPlayerByRiotId
+      security:
+        - bearerAuth: ["players:read"]
+      parameters:
+        - name: region
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/RegionCode"
+        - name: gameName
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          example: Player1
+        - name: tagLine
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 16
+          example: VN2
+      responses:
+        "200":
+          description: Hồ sơ người chơi kèm cờ `canSync` và `cooldownRemainingSec`
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerProfile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /players/{puuid}/sync-jobs:
+    post:
+      tags: [Sync Jobs]
+      summary: Tạo job đồng bộ bất đồng bộ danh sách trận đấu mới
+      description: |
+        Kiểm tra cooldown 120 giây/người chơi. Nếu hợp lệ, đẩy job vào hàng đợi đồng bộ có deduplication `match_id`.
+        Hỗ trợ header `Idempotency-Key` (UUIDv4): trùng key + cùng payload replay `202` kèm `Idempotent-Replayed: true`;
+        trùng key + khác payload trả `422`; đang xử lý song song trả `409`.
+      operationId: createSyncJob
+      security:
+        - bearerAuth: ["players:sync"]
+      parameters:
+        - name: puuid
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 78
+          example: demo-puuid-player1-vn2-00000000000000000000000000000000000000000001
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Khóa idempotency định dạng UUID v4
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncJobRequest"
+      responses:
+        "202":
+          description: Đã chấp nhận job đồng bộ
+          headers:
+            Location:
+              description: URI tra cứu trạng thái job
+              schema:
+                type: string
+                example: /api/v1/sync-jobs/9f86d081884c7d659a2feaa0c55ad015
+            Idempotent-Replayed:
+              description: Có mặt với giá trị `true` khi response được replay từ bộ đệm idempotency
+              schema:
+                type: string
+                enum: ["true"]
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /sync-jobs/{jobId}:
+    get:
+      tags: [Sync Jobs]
+      summary: Xem trạng thái một job đồng bộ
+      description: Áp dụng object-level authorization — chỉ client đã tạo job (`createdBy == sub`) mới xem được; client khác nhận `404`.
+      operationId: getSyncJob
+      security:
+        - bearerAuth: ["players:sync"]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Thông tin trạng thái job
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /players/{puuid}/matches:
+    get:
+      tags: [Players]
+      summary: Lấy danh sách lịch sử đấu phân trang cursor & bộ lọc
+      operationId: listPlayerMatches
+      security:
+        - bearerAuth: ["matches:read"]
+      parameters:
+        - name: puuid
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 78
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque keyset cursor (Base64-URL + HMAC) trả về từ `pagination.nextCursor`
+          schema:
+            type: string
+            maxLength: 512
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: queueId
+          in: query
+          required: false
+          description: Lọc theo mã hàng chờ (VD `420` = Ranked Solo/Duo, `440` = Ranked Flex)
+          schema:
+            type: integer
+            minimum: 0
+        - name: championId
+          in: query
+          required: false
+          description: Lọc theo mã tướng Riot (VD `157` = Yasuo)
+          schema:
+            type: integer
+            minimum: 1
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["-gameCreation"]
+            default: "-gameCreation"
+      responses:
+        "200":
+          description: Danh sách trận đấu kèm tổng hợp hiệu suất và thông tin phân trang cursor
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /matches/{matchId}/review:
+    get:
+      tags: [Matches]
+      summary: Lấy chi tiết hậu trận 10 người, Timeline & Phân tích LightGBM
+      description: |
+        Trả bảng điểm 2 đội, 10 người chơi, diễn biến `timeline` (tự động lazy-fetch từ Riot API và lưu vĩnh viễn ở lần đầu),
+        kèm `analytics` (tỉ lệ thắng khởi đầu 5 đường, đồ thị LightGBM Win Probability theo từng giây, 5 bước ngoặt lớn và đóng góp 10 người chơi).
+      operationId: getMatchReview
+      security:
+        - bearerAuth: ["matches:read"]
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9]{2,5}_\\d{1,20}$"
+          example: VN2_492817269
+        - name: region
+          in: query
+          required: false
+          description: Khu vực máy chủ (mặc định tự suy từ tiền tố `matchId`)
+          schema:
+            $ref: "#/components/schemas/RegionCode"
+        - name: focusPuuid
+          in: query
+          required: false
+          description: PUUID của người chơi cần highlight góc nhìn & tính đóng góp trọng tâm
+          schema:
+            type: string
+            maxLength: 78
+      responses:
+        "200":
+          description: Chi tiết hậu trận và dữ liệu phân tích
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchReviewResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /static-catalogs:
+    get:
+      tags: [Static Data]
+      summary: Liệt kê danh sách các bản vá static catalog phân trang cursor
+      operationId: listStaticCatalogs
+      security:
+        - bearerAuth: ["static:read"]
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque keyset cursor (Base64-URL + HMAC) trả về từ `pagination.nextCursor`
+          schema:
+            type: string
+            maxLength: 512
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: lang
+          in: query
+          required: false
+          description: Lọc theo mã ngôn ngữ (VD `vi_VN`, `en_US`)
+          schema:
+            type: string
+            pattern: "^[a-z]{2}_[A-Z]{2}$"
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["-syncedAt", "syncedAt"]
+            default: "-syncedAt"
+      responses:
+        "200":
+          description: Danh sách bản vá static catalog kèm thông tin phân trang cursor
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaticCatalogListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /static-catalogs/{patch}:
+    get:
+      tags: [Static Data]
+      summary: Lấy danh mục tài nguyên tĩnh Data Dragon theo bản vá
+      operationId: getStaticCatalog
+      security:
+        - bearerAuth: ["static:read"]
+      parameters:
+        - name: patch
+          in: path
+          required: true
+          description: Phiên bản bản vá (`16.23`, `16.23.1`) hoặc `latest`
+          schema:
+            type: string
+          example: latest
+        - name: lang
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^[a-z]{2}_[A-Z]{2}$"
+            default: vi_VN
+        - name: category
+          in: query
+          required: false
+          description: Lọc theo nhóm tài nguyên (`all`, `champions`, `items`, `runes`, `spells`)
+          schema:
+            type: string
+            enum: [all, champions, items, runes, spells]
+            default: all
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque keyset cursor (Base64-URL + HMAC) trả về từ `pagination.nextCursor`
+          schema:
+            type: string
+            maxLength: 512
+        - name: limit
+          in: query
+          required: false
+          description: Số mục tối đa trên mỗi trang (1–500). Nếu bỏ trống (và không có `cursor`), trả toàn bộ danh mục.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bản đồ ID → tên + URL ảnh CDN cho tướng, trang bị, ngọc, phép bổ trợ
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: public, max-age=86400
+            ETag:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+                example: Authorization
+            X-Trace-Id:
+              $ref: "#/components/headers/XTraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaticCatalogResponse"
+        "304":
+          description: Not Modified (khớp `ETag`)
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+            ETag:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT ký bằng `RS256` hoặc `ES256` (lấy qua `POST /api/v1/oauth/tokens` ở Dev/Test hoặc IdP ngoài ở Prod).
+        Scopes: `players:read`, `players:sync`, `matches:read`, `static:read`.
+
+  headers:
+    XTraceId:
+      description: Mã truy vết duy nhất của request (32 ký tự hex)
+      schema:
+        type: string
+        example: 9f86d081884c7d659a2feaa0c55ad015
+
+  responses:
+    BadRequest:
+      description: Request không hợp lệ (JSON hỏng, tham số truy vấn không được phép, cursor/region/patch sai)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    Unauthorized:
+      description: Thiếu hoặc sai JWT Bearer token
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer realm="lol-match-history", error="invalid_token"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    UnauthorizedBasic:
+      description: Xác thực OAuth client thất bại
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Basic realm="lol-match-history"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    Forbidden:
+      description: Token hợp lệ nhưng thiếu OAuth scope yêu cầu
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer realm="lol-match-history", error="insufficient_scope"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    NotFound:
+      description: Không tìm thấy tài nguyên
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    Conflict:
+      description: Xung đột trạng thái (ví dụ `Idempotency-Key` đang được xử lý bởi request song song)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    UnsupportedMediaType:
+      description: Sai `Content-Type` (yêu cầu `application/json`)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    ValidationFailed:
+      description: Payload hợp lệ cú pháp JSON nhưng vi phạm luật schema/nghiệp vụ
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    TooManyRequests:
+      description: Đang trong thời gian cooldown đồng bộ (120 giây)
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            example: 85
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    BadGateway:
+      description: Riot Games API gặp lỗi upstream hoặc không phản hồi
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+  schemas:
+    RegionCode:
+      type: string
+      enum: [vn2, sg2, tw2, oc1, kr, jp1, euw1, eun1, tr1, ru, na1, br1, la1, la2]
+      example: vn2
+
+    ProblemDetails:
+      type: object
+      required: [type, title, status, detail, instance, traceId, code]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://lol-match-history.local/errors/sync-cooldown-active
+        title:
+          type: string
+          example: Too Many Requests
+        status:
+          type: integer
+          example: 429
+        detail:
+          type: string
+          example: Vui lòng đợi thêm 85 giây trước khi đồng bộ lại.
+        instance:
+          type: string
+          example: /api/v1/players/demo-puuid/sync-jobs
+        traceId:
+          type: string
+          nullable: true
+          example: 9f86d081884c7d659a2feaa0c55ad015
+        code:
+          type: string
+          example: SYNC_COOLDOWN_ACTIVE
+        retryAfterSeconds:
+          type: integer
+          nullable: true
+        upstreamStatus:
+          type: integer
+          nullable: true
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                nullable: true
+              code:
+                type: string
+              message:
+                type: string
+
+    HealthResponse:
+      type: object
+      required: [status, database, redis, version, syncMode, riotApiKeyConfigured, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        database:
+          type: string
+          enum: [up, down]
+        redis:
+          type: string
+          enum: [up, down]
+        version:
+          type: string
+          example: 1.0.0
+        syncMode:
+          type: string
+          enum: [rq, thread, inline]
+        riotApiKeyConfigured:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    TokenRequest:
+      type: object
+      required: [grant_type]
+      additionalProperties: false
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials]
+        client_id:
+          type: string
+          example: demo-client
+        client_secret:
+          type: string
+          example: demo-secret
+        scope:
+          type: string
+          nullable: true
+          example: players:read players:sync matches:read static:read
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scope]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          example: 900
+        scope:
+          type: string
+
+    RevocationRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        token_type_hint:
+          type: string
+          nullable: true
+        client_id:
+          type: string
+        client_secret:
+          type: string
+
+    RevocationResponse:
+      type: object
+      required: [revoked, jti]
+      properties:
+        revoked:
+          type: boolean
+        jti:
+          type: string
+          nullable: true
+
+    PlayerProfile:
+      type: object
+      required: [puuid, region, gameName, tagLine, riotId, soloLp, soloWins, soloLosses, canSync, cooldownRemainingSec]
+      properties:
+        puuid:
+          type: string
+        region:
+          $ref: "#/components/schemas/RegionCode"
+        gameName:
+          type: string
+        tagLine:
+          type: string
+        riotId:
+          type: string
+          example: Player1#VN2
+        profileIconId:
+          type: integer
+          nullable: true
+        summonerLevel:
+          type: integer
+          nullable: true
+        soloTier:
+          type: string
+          nullable: true
+          example: DIAMOND
+        soloRank:
+          type: string
+          nullable: true
+          example: II
+        soloLp:
+          type: integer
+        soloWins:
+          type: integer
+        soloLosses:
+          type: integer
+        soloWinRate:
+          type: number
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        canSync:
+          type: boolean
+        cooldownRemainingSec:
+          type: integer
+          minimum: 0
+
+    SyncJobRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        region:
+          $ref: "#/components/schemas/RegionCode"
+        count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        queueId:
+          type: integer
+          minimum: 0
+          nullable: true
+          example: 420
+
+    SyncJob:
+      type: object
+      required: [jobId, status, puuid, region, count, createdAt]
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [queued, started, finished, failed]
+        puuid:
+          type: string
+        region:
+          $ref: "#/components/schemas/RegionCode"
+        count:
+          type: integer
+        queueId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        result:
+          type: object
+          nullable: true
+          properties:
+            requested:
+              type: integer
+            newMatches:
+              type: integer
+            skippedExisting:
+              type: integer
+            notFound:
+              type: integer
+            importedMatchIds:
+              type: array
+              items:
+                type: string
+        error:
+          type: object
+          nullable: true
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    ParticipantBrief:
+      type: object
+      required: [puuid, teamId, championId]
+      properties:
+        puuid:
+          type: string
+        teamId:
+          type: integer
+          enum: [100, 200]
+        championId:
+          type: integer
+        teamPosition:
+          type: string
+          nullable: true
+        riotId:
+          type: string
+          nullable: true
+
+    PlayerMatchStats:
+      type: object
+      required: [puuid, teamId, championId, win, kills, deaths, assists, kda, csTotal, csPerMin, items, spells]
+      properties:
+        puuid:
+          type: string
+        riotId:
+          type: string
+          nullable: true
+        teamId:
+          type: integer
+        teamPosition:
+          type: string
+          nullable: true
+        championId:
+          type: integer
+        win:
+          type: boolean
+        kills:
+          type: integer
+        deaths:
+          type: integer
+        assists:
+          type: integer
+        kda:
+          type: number
+        csTotal:
+          type: integer
+        csPerMin:
+          type: number
+        goldEarned:
+          type: integer
+        damageToChamps:
+          type: integer
+        visionScore:
+          type: integer
+        items:
+          type: array
+          items:
+            type: integer
+        spells:
+          type: array
+          items:
+            type: integer
+            nullable: true
+        keystoneId:
+          type: integer
+          nullable: true
+
+    MatchListResponse:
+      type: object
+      required: [data, summary, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required: [matchId, queueId, gameCreation, gameDuration, patch, player, participants]
+            properties:
+              matchId:
+                type: string
+              queueId:
+                type: integer
+              gameCreation:
+                type: integer
+                format: int64
+              gameDuration:
+                type: integer
+              patch:
+                type: string
+              player:
+                $ref: "#/components/schemas/PlayerMatchStats"
+              participants:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParticipantBrief"
+        summary:
+          type: object
+          required: [games, wins, losses, winRate, avgKda, avgCsPerMin]
+          properties:
+            games:
+              type: integer
+            wins:
+              type: integer
+            losses:
+              type: integer
+            winRate:
+              type: number
+            avgKda:
+              type: number
+            avgCsPerMin:
+              type: number
+        pagination:
+          type: object
+          required: [limit, nextCursor, hasMore]
+          properties:
+            limit:
+              type: integer
+            nextCursor:
+              type: string
+              nullable: true
+            hasMore:
+              type: boolean
+
+    Position:
+      type: object
+      properties:
+        x:
+          type: integer
+        y:
+          type: integer
+
+    MatchReviewResponse:
+      type: object
+      required: [matchId, region, queueId, gameCreation, gameDuration, patch, teams, participants]
+      properties:
+        matchId:
+          type: string
+        region:
+          $ref: "#/components/schemas/RegionCode"
+        queueId:
+          type: integer
+        gameCreation:
+          type: integer
+          format: int64
+        gameDuration:
+          type: integer
+        patch:
+          type: string
+        focusPuuid:
+          type: string
+          nullable: true
+        teams:
+          type: array
+          items:
+            type: object
+            required: [teamId, win, kills, barons, dragons, heralds, voidGrubs, towers, inhibitors, bans]
+            properties:
+              teamId:
+                type: integer
+              win:
+                type: boolean
+              kills:
+                type: integer
+              barons:
+                type: integer
+              dragons:
+                type: integer
+              heralds:
+                type: integer
+              voidGrubs:
+                type: integer
+              towers:
+                type: integer
+              inhibitors:
+                type: integer
+              bans:
+                type: array
+                items:
+                  type: integer
+        participants:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/PlayerMatchStats"
+              - type: object
+                properties:
+                  runes:
+                    type: object
+                    nullable: true
+                  isFocus:
+                    type: boolean
+                  participantId:
+                    type: integer
+                    nullable: true
+                  itemPurchases:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestampMs:
+                          type: integer
+                        itemId:
+                          type: integer
+        timeline:
+          type: object
+          nullable: true
+          properties:
+            intervalMs:
+              type: integer
+            frames:
+              type: array
+              items:
+                type: object
+                properties:
+                  minute:
+                    type: integer
+                  timestampMs:
+                    type: integer
+                  blueGold:
+                    type: integer
+                  redGold:
+                    type: integer
+                  blueGoldDiff:
+                    type: integer
+                  blueXp:
+                    type: integer
+                  redXp:
+                    type: integer
+                  blueXpDiff:
+                    type: integer
+            keyEvents:
+              type: array
+              items:
+                type: object
+            participantFrames:
+              type: array
+              items:
+                type: object
+                properties:
+                  minute:
+                    type: integer
+                  timestampMs:
+                    type: integer
+                  participants:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        gold:
+                          type: integer
+                        level:
+                          type: integer
+                        cs:
+                          type: integer
+                        x:
+                          type: integer
+                          nullable: true
+                        y:
+                          type: integer
+                          nullable: true
+            itemEvents:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestampMs:
+                    type: integer
+                  type:
+                    type: string
+                    enum: [ITEM_PURCHASED, ITEM_SOLD, ITEM_DESTROYED, ITEM_UNDO]
+                  participantId:
+                    type: integer
+                  itemId:
+                    type: integer
+                  beforeId:
+                    type: integer
+                  afterId:
+                    type: integer
+            killEvents:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestampMs:
+                    type: integer
+                  killerId:
+                    type: integer
+                    nullable: true
+                  victimId:
+                    type: integer
+                    nullable: true
+                  assistingParticipantIds:
+                    type: array
+                    items:
+                      type: integer
+                  position:
+                    $ref: "#/components/schemas/Position"
+        analytics:
+          type: object
+          nullable: true
+          properties:
+            modelSource:
+              type: string
+              enum: [lightgbm, heuristic]
+            modelMetrics:
+              type: object
+              nullable: true
+            initialBlueWinRate:
+              type: number
+            laneMatchups:
+              type: array
+              items:
+                type: object
+                properties:
+                  position:
+                    type: string
+                  blueChampionId:
+                    type: integer
+                  redChampionId:
+                    type: integer
+                  blueWinRate:
+                    type: number
+                  games:
+                    type: integer
+            winProbabilityFrames:
+              type: array
+              items:
+                type: object
+                properties:
+                  minute:
+                    type: integer
+                  blueWinProb:
+                    type: number
+                  focusWinProb:
+                    type: number
+                  focusImpactDelta:
+                    type: number
+                  focusImpactCumulative:
+                    type: number
+            eventTimeline:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  timestampMs:
+                    type: integer
+                  minute:
+                    type: integer
+                  kind:
+                    type: string
+                  blueWinProb:
+                    type: number
+                  focusWinProb:
+                    type: number
+                  probDelta:
+                    type: number
+                  focusImpactDelta:
+                    type: number
+                  focusImpactCumulative:
+                    type: number
+                  killerTeamId:
+                    type: integer
+                    nullable: true
+                  killerChampionId:
+                    type: integer
+                    nullable: true
+                  victimChampionId:
+                    type: integer
+                    nullable: true
+                  assistChampionIds:
+                    type: array
+                    items:
+                      type: integer
+                  position:
+                    $ref: "#/components/schemas/Position"
+            highlights:
+              type: array
+              items:
+                type: object
+                properties:
+                  pointId:
+                    type: string
+                  timestampMs:
+                    type: integer
+                  kind:
+                    type: string
+                  label:
+                    type: string
+                  probDelta:
+                    type: number
+                  focusWinProb:
+                    type: number
+            playerContributions:
+              type: array
+              items:
+                type: object
+                properties:
+                  puuid:
+                    type: string
+                  riotId:
+                    type: string
+                    nullable: true
+                  teamId:
+                    type: integer
+                  teamPosition:
+                    type: string
+                    nullable: true
+                  championId:
+                    type: integer
+                    nullable: true
+                  isFocus:
+                    type: boolean
+                  totalImpact:
+                    type: number
+                  combatImpact:
+                    type: number
+                  objectiveImpact:
+                    type: number
+                  laningImpact:
+                    type: number
+
+    StaticCatalogResponse:
+      type: object
+      required: [patch, lang, champions, items, runes, spells, pagination]
+      properties:
+        patch:
+          type: string
+          example: 16.23.1
+        lang:
+          type: string
+          example: vi_VN
+        champions:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              id:
+                type: integer
+              alias:
+                type: string
+              name:
+                type: string
+              title:
+                type: string
+                nullable: true
+              imageUrl:
+                type: string
+                format: uri
+        items:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+                nullable: true
+              gold:
+                type: integer
+                nullable: true
+              imageUrl:
+                type: string
+                format: uri
+        runes:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              type:
+                type: string
+                enum: [style, keystone, rune]
+              styleId:
+                type: integer
+              imageUrl:
+                type: string
+                format: uri
+        spells:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              id:
+                type: integer
+              alias:
+                type: string
+              name:
+                type: string
+              imageUrl:
+                type: string
+                format: uri
+        pagination:
+          type: object
+          required: [limit, nextCursor, hasMore]
+          properties:
+            limit:
+              type: integer
+              nullable: true
+            nextCursor:
+              type: string
+              nullable: true
+            hasMore:
+              type: boolean
+
+    StaticCatalogListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required: [patch, lang, syncedAt, counts]
+            properties:
+              patch:
+                type: string
+                example: 16.23.1
+              lang:
+                type: string
+                example: vi_VN
+              syncedAt:
+                type: string
+                format: date-time
+              counts:
+                type: object
+                required: [champions, items, runes, spells]
+                properties:
+                  champions:
+                    type: integer
+                  items:
+                    type: integer
+                  runes:
+                    type: integer
+                  spells:
+                    type: integer
+        pagination:
+          type: object
+          required: [limit, nextCursor, hasMore]
+          properties:
+            limit:
+              type: integer
+            nextCursor:
+              type: string
+              nullable: true
+            hasMore:
+              type: boolean
