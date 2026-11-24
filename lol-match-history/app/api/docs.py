@@ -1,44 +1,16 @@
-"""OpenAPI specification and interactive Swagger UI endpoints."""
+"""OpenAPI specification and interactive Swagger UI endpoints (via flask-swagger-ui)."""
 from __future__ import annotations
 
-from flask import Response, redirect, send_file, url_for
+from flask import redirect, send_file
+from flask_swagger_ui import get_swaggerui_blueprint
 
 from ..config import BASE_DIR
 from . import api_v1
 from .errors import ApiError
 
 OPENAPI_PATH = BASE_DIR / "openapi.yaml"
-
-_SWAGGER_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RiftReview API v1 — Swagger UI</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
-  <style>
-    body { margin: 0; background: #fafafa; }
-    .topbar { display: none; }
-  </style>
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
-  <script>
-    window.onload = () => {
-      window.ui = SwaggerUIBundle({
-        url: "__SPEC_URL__",
-        dom_id: "#swagger-ui",
-        deepLinking: true,
-        persistAuthorization: true,
-        displayRequestDuration: true,
-        tryItOutEnabled: true
-      });
-    };
-  </script>
-</body>
-</html>
-"""
+SWAGGER_URL = "/api/v1/docs"
+API_URL = "/api/v1/openapi.yaml"
 
 
 @api_v1.get("/openapi.yaml")
@@ -50,13 +22,20 @@ def openapi_spec():
     return resp
 
 
-@api_v1.get("/docs")
-def swagger_ui():
-    spec_url = url_for("api_v1.openapi_spec")
-    return Response(_SWAGGER_HTML.replace("__SPEC_URL__", spec_url), status=200, mimetype="text/html")
+def register_swagger_ui(app) -> None:
+    swaggerui_bp = get_swaggerui_blueprint(
+        SWAGGER_URL,
+        API_URL,
+        config={
+            "app_name": "RiftReview API v1",
+            "deepLinking": True,
+            "persistAuthorization": True,
+            "displayRequestDuration": True,
+            "tryItOutEnabled": True,
+        },
+    )
+    app.register_blueprint(swaggerui_bp)
 
-
-def register_docs_redirect(app) -> None:
     @app.get("/docs")
     def _root_docs_redirect():
-        return redirect(url_for("api_v1.swagger_ui"), code=302)
+        return redirect(f"{SWAGGER_URL}/", code=302)
