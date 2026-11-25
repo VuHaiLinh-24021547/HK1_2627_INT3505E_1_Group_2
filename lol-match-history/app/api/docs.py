@@ -8,7 +8,7 @@ from ..config import BASE_DIR
 from . import api_v1
 from .errors import ApiError
 
-OPENAPI_PATH = BASE_DIR / "openapi.yaml"
+OPENAPI_PATH = BASE_DIR / "docs" / "openapi.yaml"
 SWAGGER_URL = "/api/v1/docs"
 API_URL = "/api/v1/openapi.yaml"
 

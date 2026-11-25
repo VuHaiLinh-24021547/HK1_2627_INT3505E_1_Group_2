@@ -574,6 +574,14 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/bad-request
+            title: Bad Request
+            status: 400
+            detail: Request body is not valid JSON.
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: MALFORMED_JSON
     Unauthorized:
       description: Thiếu hoặc sai JWT Bearer token
       headers:
@@ -585,6 +593,14 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/authentication-required
+            title: Unauthorized
+            status: 401
+            detail: "Missing Authorization: Bearer <token> header."
+            instance: /api/v1/players/demo-puuid/matches
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: AUTHENTICATION_REQUIRED
     UnauthorizedBasic:
       description: Xác thực OAuth client thất bại
       headers:
@@ -596,6 +612,14 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/invalid-client
+            title: Unauthorized
+            status: 401
+            detail: Client authentication failed.
+            instance: /api/v1/oauth/tokens
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: INVALID_CLIENT
     Forbidden:
       description: Token hợp lệ nhưng thiếu OAuth scope yêu cầu
       headers:
@@ -607,30 +631,74 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/insufficient-scope
+            title: Forbidden
+            status: 403
+            detail: "Missing required scope(s): players:sync."
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: INSUFFICIENT_SCOPE
     NotFound:
       description: Không tìm thấy tài nguyên
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/player-not-found
+            title: Not Found
+            status: 404
+            detail: Player 'unknown-puuid' does not exist.
+            instance: /api/v1/players/unknown-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: PLAYER_NOT_FOUND
     Conflict:
       description: Xung đột trạng thái (ví dụ `Idempotency-Key` đang được xử lý bởi request song song)
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/idempotency-key-in-progress
+            title: Conflict
+            status: 409
+            detail: A request with this Idempotency-Key is still being processed.
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: IDEMPOTENCY_KEY_IN_PROGRESS
     UnsupportedMediaType:
       description: Sai `Content-Type` (yêu cầu `application/json`)
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/unsupported-media-type
+            title: Unsupported Media Type
+            status: 415
+            detail: "Request body must be sent as Content-Type: application/json."
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: UNSUPPORTED_MEDIA_TYPE
     ValidationFailed:
       description: Payload hợp lệ cú pháp JSON nhưng vi phạm luật schema/nghiệp vụ
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/validation-failed
+            title: Unprocessable Entity
+            status: 422
+            detail: One or more request fields failed validation.
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: VALIDATION_FAILED
+            errors:
+              - field: count
+                code: less_than_equal
+                message: Input should be less than or equal to 100
     TooManyRequests:
       description: Đang trong thời gian cooldown đồng bộ (120 giây)
       headers:
@@ -642,12 +710,30 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/sync-cooldown-active
+            title: Too Many Requests
+            status: 429
+            detail: Vui lòng đợi thêm 85 giây trước khi đồng bộ lại.
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: SYNC_COOLDOWN_ACTIVE
+            retryAfterSeconds: 85
     BadGateway:
       description: Riot Games API gặp lỗi upstream hoặc không phản hồi
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: https://lol-match-history.local/errors/riot-upstream-error
+            title: Bad Gateway
+            status: 502
+            detail: Could not reach Riot API
+            instance: /api/v1/players/demo-puuid/sync-jobs
+            traceId: 9f86d081884c7d659a2feaa0c55ad015
+            code: RIOT_UPSTREAM_ERROR
+            upstreamStatus: 503
 
   schemas:
     RegionCode:
